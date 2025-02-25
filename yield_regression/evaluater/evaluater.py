@@ -1,10 +1,39 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.metrics import r2_score
-import scipy.stats as stats
+# from sklearn.metrics import r2_score
+# import scipy.stats as stats
 import matplotlib.cm as cm
-
+def stats_spearmanr(y_true, y_pred):
+    """
+    手动计算斯皮尔曼相关系数
+    :param y_true: 真实标签
+    :param y_pred: 模型预测值
+    :return: 斯皮尔曼相关系数和 p 值
+    """
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
+    n = len(y_true)
+    rank_true = np.argsort(np.argsort(y_true))
+    rank_pred = np.argsort(np.argsort(y_pred))
+    diff = rank_true - rank_pred
+    d_squared = np.sum(diff ** 2)
+    spearman_r = 1 - 6 * d_squared / (n * (n ** 2 - 1))
+    return spearman_r
+def r2_score(y_true, y_pred):
+    """
+    计算拟合优度 R2
+    :param y_true: 真实标签
+    :param y_pred: 模型预测值
+    :return: R2 分数
+    """
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
+    mean_y = np.mean(y_true)
+    ss_tot = np.sum((y_true - mean_y) ** 2)
+    ss_res = np.sum((y_true - y_pred) ** 2)
+    r2 = 1 - ss_res / ss_tot
+    return r2
 def evaluator(smiles, labels, preds, save_path):
     """
     数据分析函数，绘制散点图和线性回归直线，以及分类分析热力图
@@ -21,7 +50,7 @@ def evaluator(smiles, labels, preds, save_path):
     reagent_classes = set()
 
     for smile in smiles:
-        reactants, reagents, products = smile.split(">>")
+        reactants, reagents, products = smile.split(">")
         reactant_types = tuple(sorted(reactants.split()))
         reagent_types = tuple(sorted(reagents.split()))
         reactants_types.append(reactant_types)
@@ -44,7 +73,7 @@ def evaluator(smiles, labels, preds, save_path):
 
     # 计算 Pearson-R, 斯皮尔曼相关系数, 拟合优度 R2
     pearson_r = np.corrcoef(labels, preds)[0, 1]
-    spearman_r, _ = stats.spearmanr(labels, preds)
+    spearman_r = stats_spearmanr(labels, preds)
     r2 = r2_score(labels, preds)
 
     # 绘制散点图，并根据反应物种类和试剂种类设置颜色和形状

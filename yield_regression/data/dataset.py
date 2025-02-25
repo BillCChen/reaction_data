@@ -1,9 +1,10 @@
+import torch
 import os
 import pickle
 import numpy as np
 
 class ChemicalReactionDataset:
-    def __init__(self, dataset_path: str, encoding_type: str, encoding_param: dict, force_reencoding: bool):
+    def __init__(self, args,dataset_path: str, encoding_type: str, force_reencoding: bool):
         """
         初始化类，读取数据并检查有效性，进行编码处理。
         :param dataset_path: 数据集路径 (字符串)，指向一个 pkl 文件
@@ -12,20 +13,19 @@ class ChemicalReactionDataset:
         :param force_reencoding: 是否强制重新编码 (布尔值)
         """
         # 参数校验
-        self._validate_parameters(dataset_path, encoding_type, encoding_param, force_reencoding)
-
+        self._validate_parameters(dataset_path, encoding_type, force_reencoding)
+        self.args = args
         self.dataset_path = dataset_path
         self.encoding_type = encoding_type
-        self.encoding_param = encoding_param
         self.force_reencoding = force_reencoding
         
         # 读取数据
-        self.data = self._load_data()
+        self._load_data()
 
         # 执行编码
         self._encoding()
 
-    def _validate_parameters(self, dataset_path, encoding_type, encoding_param, force_reencoding):
+    def _validate_parameters(self, dataset_path, encoding_type, force_reencoding):
         """验证参数的有效性"""
         if not os.path.exists(dataset_path):
             raise FileNotFoundError(f"Dataset path '{dataset_path}' not found.")
@@ -33,39 +33,47 @@ class ChemicalReactionDataset:
         valid_encoding_types = ['DRFP', 'unirxn', 'renfp']
         if encoding_type not in valid_encoding_types:
             raise ValueError(f"Invalid encoding type. Valid types are {valid_encoding_types}.")
-        
-        if not isinstance(encoding_param, dict):
-            raise TypeError("Encoding parameters should be a dictionary.")
-        
         if not isinstance(force_reencoding, bool):
             raise TypeError("force_reencoding should be a boolean value.")
-        
+    def check_keys(self,data):
+        """检查数据是否有必要的键,报错说明数据集源文件有问题"""
+        if not isinstance(data, dict):
+            raise ValueError("Data in pkl file should be a dict.Data should have {reaction1:{{}},reaction2:{{}}} format.")
+        for key,item in data.items():
+            if 'smiles' not in item.keys():
+                data[key]['smiles'] = key
+            if 'label' not in item.keys():
+                raise ValueError("Data should have 'label' key.")
+            if 'encoding'  not in item.keys():
+                data[key]['encoding'] = {
+                    'info': "encoding format as {DRFP:tensor}} or {function:tensor}}",
+                }
+            if 'predict' not in item.keys():
+                data[key]['predict'] = {
+                    'info': "predict format as {DRFP:value}} or {function:value}}",
+                }
+        return data
     def _load_data(self):
         """加载数据集"""
         print("Loading data from pkl file...")
         with open(self.dataset_path, 'rb') as f:
             data = pickle.load(f)
-        
-        if not isinstance(data, list):
-            raise ValueError("Data in pkl file should be a list.")
-        
-        return data
+        data = self.check_keys(data)
+        self.data = data
 
-    def get_data(self, mode="for_train"):
+    def get_data(self, *args, **kwargs):
         """获取数据的方法，根据模式返回不同的数据"""
-        if mode == "for_train":
-            print("Extracting data for training...")
-            encoding_list = []
-            label_list = []
-            for item in self.data:
-                encoding_list.append(item.get('encoding', {}).get(self.encoding_type, {}).get(str(self.encoding_param), []))
-                label_list.append(item.get('label', []))
-            return encoding_list, label_list
-        elif mode == "for_analyze":
-            print("Returning all data for analysis...")
-            return self.data
-        else:
-            raise ValueError("Invalid mode. Choose 'for_train' or 'for_analyze'.")
+        data_dict = {}
+        for arg in args:
+            data_dict[arg] = []
+        print("Extracting data for training...")
+        for key,item in self.data.items():
+            for arg in args:
+                if arg == 'encoding':
+                    data_dict[arg].append(item[arg][self.encoding_type])
+                else:
+                    data_dict[arg].append(item[arg])
+        return data_dict
 
     def analyze_data(self):
         """分析数据集的标签分布"""
@@ -88,65 +96,62 @@ class ChemicalReactionDataset:
     def _encoding(self):
         """执行编码"""
         print(f"Encoding data using method '{self.encoding_type}'...")
-        for i, item in enumerate(self.data):
-            if 'encoding' not in item or not item['encoding'].get(self.encoding_type, {}).get(str(self.encoding_param)):
+        if not self.force_reencoding:
+            print("Data already encoded. Skipping encoding...")
+            return
+
+        for i,(key, item) in enumerate(self.data.items()):
+            if i % 33 == 0:
                 print(f"Encoding reaction {i}...")
-                tensor = self._get_encoding_tensor(item['SMILES'])
-                if 'encoding' not in item:
-                    item['encoding'] = {}
-                if self.encoding_type not in item['encoding']:
-                    item['encoding'][self.encoding_type] = {}
-                item['encoding'][self.encoding_type][str(self.encoding_param)] = tensor
-            else:
-                print(f"Skipping encoding for reaction {i}, already encoded.")
+            tensor = self._get_encoding_tensor(item['smiles'])
+            
+            self.data[key]['encoding'][self.encoding_type] = torch.tensor(tensor[0].reshape(-1),dtype=torch.float32)
+
         self._save_data()
-    def _encoding_in_docking(self):
-            # 使用 Docker 进行编码
-            print("Encoding in Docker...")
-            docker_input_file = "docker_encoding_input.pkl"
-            
-            # 检查是否已经有输入文件
-            if not os.path.exists(docker_input_file) or self.force_reencoding:
-                with open(docker_input_file, 'wb') as f:
-                    pickle.dump([entry["smiles"] for entry in self.data], f)
-                print(f"SMILES data written to {docker_input_file}")
-            
-            # 调用 Docker 进行编码
-            from docker import Run_encoding  # 假设该函数位于 docker.py 文件中
-            output_file = Run_encoding(self.encoding_type, docker_input_file, self.encoding_params)
-
-            # 加载编码结果并更新数据
-            with open(output_file, 'rb') as f:
-                encoded_data = pickle.load(f)
-
-            for i, entry in enumerate(self.data):
-                entry["encoding"] = encoded_data[i]
-
-            # 更新 pkl 文件
-            with open(self.dataset_path, 'wb') as f:
-                pickle.dump(self.data, f)
-            print(f"Encoding in Docker completed and results saved to {self.dataset_path}")
 
     def _get_encoding_tensor(self, smiles: str):
         """根据 SMILES 编码化学反应为一维张量"""
         # 根据编码类型选择相应的编码函数
-        encoding_func = self._get_encoding_func()
-        return encoding_func(self.encoding_param, smiles)
-
-    def _get_encoding_func(self):
-        """根据编码类型导入对应的编码函数"""
-        if self.encoding_type == 'DRFP':
-            from encoding_module import encoding_by_DRFP
-            return encoding_by_DRFP
-        elif self.encoding_type == 'unirxn':
-            from encoding_module import encoding_by_unirxn
-            return encoding_by_unirxn
-        elif self.encoding_type == 'renfp':
-            from encoding_module import encoding_by_renfp
-            return encoding_by_renfp
+        result = self._get_encoding_func(smiles)
+        return result
+    def link_unirxn(self,encoding_type):
+        if encoding_type == 'unirxn':
+            "导入 unirxn 编码得到的 smiles 和编码的 dict"
+            with open('unirxn.pkl','rb') as f:
+                encoding_book = pickle.load(f)
+            self.encoding_book = encoding_book
+        elif encoding_type == 'rxnfp':
+            "导入 rxnfp 编码得到的 smiles 和编码的 dict"
+            with open('rxnfp.pkl','rb') as f:
+                encoding_book = pickle.load(f)
+            self.encoding_book = encoding_book
         else:
             raise ValueError("Unknown encoding type.")
-
+    def _get_encoding_func(self,smiles):
+        """根据编码类型导入对应的编码函数"""
+        # self.encoding_param, self.encoding_type
+        if self.encoding_type == 'DRFP':
+            from drfp import DrfpEncoder
+            return DrfpEncoder.encode(smiles)
+        elif self.encoding_type == 'unirxn':
+            self.link_unirxn("unirxn")
+            return self.encoding_book(smiles)
+        elif self.encoding_type == 'rxnfp':
+            self.link_unirxn("rxnfp")
+            return self.encoding_book(smiles)
+        else:
+            raise ValueError("Unknown encoding type.")
+    def refresh_data(self,results,smiles,split_type):
+        """更新数据集的预测值"""
+        for key,item in self.data.items():
+            if self.encoding_type not in item['predict'].keys():
+                self.data[key]['predict'][self.encoding_type] = {
+                    'random': None,
+                    'OOD': None
+                }
+        for i in range(len(results)):
+            self.data[smiles[i]]['predict'][self.encoding_type][split_type] = results[i]
+        self._save_data()
     def _save_data(self):
         """保存更新后的数据"""
         print("Saving encoded data to pkl file...")

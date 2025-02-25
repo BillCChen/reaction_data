@@ -16,7 +16,17 @@ class ModelRegression(pl.LightningModule):
         super(ModelRegression, self).__init__()
         
         self.args = args
-        
+        # 为了防止 args 中缺少某些参数，这里进行一些默认设置
+        self.args.setdefault('input_dim', 2048)
+        self.args.setdefault('hidden_dim', 64)
+        self.args.setdefault('num_layers', 3)
+        self.args.setdefault('activation', 'relu')
+        self.args.setdefault('dropout', 0.3)
+        self.args.setdefault('lr', 0.001)
+        self.args.setdefault('batch_size', 32)
+        self.args.setdefault('early_stopping', None)
+        self.args.setdefault('use_normalization', False)
+
         # 模型组件
         self.model = self.create_model()
 
@@ -97,7 +107,7 @@ class ModelRegression(pl.LightningModule):
         :param batch_idx: 当前 batch 的索引
         :return: 训练损失
         """
-        x, y = batch
+        x, y = batch['fingerprint'], batch['labels']    
         y_hat = self(x)
         loss = F.mse_loss(y_hat.squeeze(), y)
         
@@ -113,7 +123,7 @@ class ModelRegression(pl.LightningModule):
         :param batch_idx: 当前 batch 的索引
         :return: 验证损失和预测值
         """
-        x, y = batch
+        x, y = batch['fingerprint'], batch['labels']  
         y_hat = self(x)
         loss = F.mse_loss(y_hat.squeeze(), y)
         
@@ -124,16 +134,15 @@ class ModelRegression(pl.LightningModule):
         
         return loss
 
-    def on_epoch_end(self):
+    def on_epoch_end(self,epoch):
         """
         每个 epoch 结束时打印当前的训练和验证损失，以及其他评估指标
         """
-        print(f"Epoch {self.current_epoch} -- "
+        print(f"Epoch {epoch} -- "
               f"Train Loss: {self.eval_metrics['train_loss']:.4f}, "
               f"Validation Loss: {self.eval_metrics['valid_loss']:.4f}, "
               f"R2: {self.eval_metrics['r2']:.4f}, "
               f"Pearson R: {self.eval_metrics['pearson_r']:.4f}")
-
     def get_args(self, with_metrics=False):
         """
         返回模型参数，若指定返回评估指标。
@@ -149,12 +158,14 @@ class ModelRegression(pl.LightningModule):
         返回模型训练所需的组件，如优化器，学习率调度器等。
         :return: 包含优化器、学习率调度器的字典
         """
+        optimizer = optim.Adam(self.parameters(), lr=self.args.get('lr', 0.001))
+        lr_sceduler = StepLR(optimizer, step_size=10, gamma=0.7)
         return {
-            'optimizer': optim.Adam(self.parameters(), lr=self.args.get('lr', 0.001)),
-            'lr_scheduler': StepLR(optimizer, step_size=10, gamma=0.7),
+            'optimizer': optimizer,
+            'lr_scheduler': lr_sceduler,
             'early_stopping': self.args.get('early_stopping', None)
         }
-
+    
 # 示例 args 设置
 args = {
     'input_dim': 128,        # 输入维度
