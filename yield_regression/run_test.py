@@ -12,23 +12,47 @@ from pipeline import pipeline
 from evaluater.evaluater import evaluator
 from torch.utils.data import TensorDataset
 
+import argparse
 if __name__ == "__main__":
     # 设置一些基本的参数
-    args = {
-        'dataset_path': '/root/reaction_data/S-F/SF640_A>B>C_lbl.pkl',  # 数据集路径
-        'encoding_type': 'DRFP',  # 编码类型
-        'input_dim': 2048,  # 输入维度
-        'force_reencoding': False,  # 是否强制重新编码
-        'split_type': 'random',  # 数据分割类型 ('random' 或 'OOD')
-        'batch_size': 32,  # 批量大小
-        'num_workers': 0,  # 工作线程数
-        'max_epochs': 36,  # 最大训练轮数
-        'lr': 0.001,  # 学习率
-        'model_save_path': 'path_to_save_model.ckpt',  # 模型保存路径
-        'predictions_save_path': 'predictions.pkl',  # 预测结果保存路径
-        'gpus': None,  # GPU 设置
-        'early_stopping': 'valid_loss',  # 提前停止的监控指标
-    }
+    # args = {
+    #     'dataset_path': '/root/reaction_data/S-F/SF640_A>B>C_lbl.pkl',  # 数据集路径
+    #     'encoding_type': 'DRFP',  # 编码类型
+    #     'input_dim': 2048,  # 输入维度
+    #     'force_reencoding': False,  # 是否强制重新编码
+    #     'split_type': 'random',  # 数据分割类型 ('random' 或 'OOD')
+    #     'batch_size': 32,  # 批量大小
+    #     'num_workers': 0,  # 工作线程数
+    #     'max_epochs': 36,  # 最大训练轮数
+    #     'lr': 0.001,  # 学习率
+    #     'model_save_path': 'path_to_save_model.ckpt',  # 模型保存路径
+    #     'predictions_save_path': 'predictions.pkl',  # 预测结果保存路径
+    #     'gpus': None,  # GPU 设置
+    #     'early_stopping': 'valid_loss',  # 提前停止的监控指标
+    #     'jump_train': 'False',  # 是否跳过训练
+    # }
+    parser = argparse.ArgumentParser(description='Train a model for yield regression')
+    # 设置一些基本的参数
+    parser.add_argument('--dataset_path', type=str, default='/root/reaction_data/S-F/SF640_A>B>C_lbl.pkl', help='Path to dataset')
+    parser.add_argument('--encoding_type', type=str, default='DRFP', help='Type of encoding')
+    parser.add_argument('--input_dim', type=int, default=2048, help='Input dimension')
+    parser.add_argument('--force_reencoding', type=bool, default=False, help='Force re-encoding')
+    parser.add_argument('--split_type', type=str, default='random', help='Type of data split (random or OOD)')
+    parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
+    parser.add_argument('--num_workers', type=int, default=0, help='Number of workers')
+    parser.add_argument('--max_epochs', type=int, default=36, help='Maximum number of epochs')
+    parser.add_argument('--lr', type=float, default=0.001, help='Learning rate')
+    parser.add_argument('--model_save_path', type=str, default='path_to_save_model.ckpt', help='Path to save model')
+    parser.add_argument('--predictions_save_path', type=str, default='predictions.pkl', help='Path to save predictions')
+    parser.add_argument('--gpus', type=str, default=None, help='GPUs')
+    parser.add_argument('--early_stopping', type=str, default='valid_loss', help='Early stopping monitor')
+    parser.add_argument('--jump_train', type=str, default='False', help='Jump training')
+    args = parser.parse_args()
+    # 转换为字典
+    args = vars(args)
+
+
+
 
     # 1. 数据加载和预处理
     print("Loading dataset and preparing dataloaders...")

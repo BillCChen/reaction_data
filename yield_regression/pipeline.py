@@ -3,7 +3,7 @@ import numpy as np
 # from sklearn.metrics import mean_absolute_error, mean_squared_error
 from torchmetrics import PearsonCorrCoef, R2Score
 import torch.nn.functional as F
-def pipeline(args, dataloaders, model_class):
+def pipeline(args, dataloaders, model_class,jump_train=False):
     """
     Pipeline 函数，依次进行数据加载、数据处理、模型拟合和预测值获取
     :param args: 配置字典，包含所有必要的参数
@@ -106,12 +106,13 @@ def train_func(model, dataloaders, args):
     for epoch in range(num_epochs):
         model.train()
         train_loss = 0
-        for batch in train_loader:
-            optimizer.zero_grad()
-            loss = model.training_step(batch,None)
-            loss.backward()
-            optimizer.step()
-            train_loss += loss.item()
+        if not args['jump_train'] == "True":
+            for batch in train_loader:
+                optimizer.zero_grad()
+                loss = model.training_step(batch,None)
+                loss.backward()
+                optimizer.step()
+                train_loss += loss.item()
 
         train_loss /= len(train_loader)
 
