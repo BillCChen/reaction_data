@@ -1,0 +1,25 @@
+defaults:
+  - datamodule: default
+  - model: default
+  - hydra/logging: null
+
+seed: 42
+trainer:
+  max_epochs: 100
+  accelerator: gpu
+  devices: 4
+  strategy: ddp_find_unused_parameters_true
+  logger: true
+  enable_checkpointing: true
+  callbacks:
+    - monitor: val_pearson_spearman
+      patience: 10
+      mode: max
+      # _target_: pytorch_lightning.callbacks.EarlyStopping
+    - monitor: val_pearson_spearman
+      mode: max
+      # _target_: pytorch_lightning.callbacks.ModelCheckpoint
+
+hydra:
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
