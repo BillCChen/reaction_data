@@ -43,7 +43,6 @@ class DataModule(pl.LightningDataModule):
     def test_dataloader(self):
         return DataLoader(self.test_dataset, batch_size=self.batch_size, 
                         num_workers=self.num_workers, pin_memory=True)
-
 class LitModel(pl.LightningModule):
     def __init__(self, input_dim=2048, hidden_dim=1024, num_layers=8, output_dim=1, 
                  lr=1e-3, use_bn=True):
@@ -88,11 +87,13 @@ class LitModel(pl.LightningModule):
         y_hat = self(x)
         loss = F.mse_loss(y_hat, y)
         self.log("val_loss", loss, prog_bar=True)
+        self.log_dict({"val_preds": y_hat, "val_targets": y}, on_epoch=True)
         return {"preds": y_hat, "targets": y}
 
-    def validation_epoch_end(self, outputs):
-        preds = torch.cat([x["preds"] for x in outputs])
-        targets = torch.cat([x["targets"] for x in outputs])
+    def on_validation_epoch_end(self):
+        # 获取在 validation_step 中记录的所有预测值和目标值
+        preds = torch.cat([x.cpu() for x in self.trainer.callback_metrics.get('val_preds', [])])
+        targets = torch.cat([x.cpu() for x in self.trainer.callback_metrics.get('val_targets', [])])
         
         pearson = PearsonCorrCoef()(preds.squeeze(), targets.squeeze())
         spearman = SpearmanCorrCoef()(preds.squeeze(), targets.squeeze())
@@ -106,13 +107,13 @@ class LitModel(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self(x)
-        self.test_preds.append(y_hat)
-        self.test_targets.append(y)
+        self.log_dict({"test_preds": y_hat, "test_targets": y}, on_epoch=True)
         return {"preds": y_hat, "targets": y}
 
     def on_test_epoch_end(self):
-        preds = torch.cat(self.test_preds)
-        targets = torch.cat(self.test_targets)
+        # 获取在 test_step 中记录的所有预测值和目标值
+        preds = torch.cat([x.cpu() for x in self.trainer.callback_metrics.get('test_preds', [])])
+        targets = torch.cat([x.cpu() for x in self.trainer.callback_metrics.get('test_targets', [])])
         
         pearson = PearsonCorrCoef()(preds.squeeze(), targets.squeeze())
         spearman = SpearmanCorrCoef()(preds.squeeze(), targets.squeeze())
@@ -131,7 +132,6 @@ class LitModel(pl.LightningModule):
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.lr)
-
 @hydra.main(config_path="config", config_name="train", version_base="1.3")
 def main(cfg: DictConfig):
     pl.seed_everything(cfg.seed)
@@ -143,7 +143,8 @@ def main(cfg: DictConfig):
     #     "train_labels": [torch.randn(1, dtype=torch.float32) for _ in range(1000)],
     #     "test_labels": [torch.randn(1, dtype=torch.float32) for _ in range(200)],
     # }
-    data_dict = pickle.load(open("/root/public_data_gpu8/sch_data/20250303_ChORISO_train_test_reactions_fps_labels.pkl", "rb"))
+    # data_dict = pickle.load(open("/root/public_data_gpu8/sch_data/20250303_ChORISO_train_test_reactions_fps_labels.pkl", "rb"))
+    data_dict = pickle.load(open("/root/public_data_gpu8/sch_data/20250303_ChORISO_train_test_reactions_fps_labels_mini.pkl", "rb"))
     # Convert to tensors
     train_fps = torch.stack(data_dict["train_fps"])
     test_fps = torch.stack(data_dict["test_fps"])
@@ -170,7 +171,10 @@ def main(cfg: DictConfig):
     from hydra.utils import instantiate
 
 # 自动实例化 callbacks
-    callbacks = [instantiate(callback) for callback in cfg.trainer.callbacks]
+    from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
+    # callbacks = [
+    #     EarlyStopping(**cfg.trainer.callbacks[0]),
+    # ]
     # trainer = Trainer(
     #     **cfg.trainer,
     #     callbacks=[
@@ -179,8 +183,11 @@ def main(cfg: DictConfig):
     #     ]
     # )
     trainer = Trainer(
-    **cfg.trainer,
-    callbacks=callbacks  # 使用 Hydra 实例化的 callbacks
+    max_epochs=cfg.trainer.max_epochs,
+    devices=cfg.trainer.devices,
+    accelerator=cfg.trainer.accelerator,
+    logger=cfg.trainer.logger,
+    callbacks=[instantiate(x) for x in cfg.trainer.callbacks],
     )
     trainer.fit(model, dm)
     trainer.test(model, datamodule=dm)
@@ -190,3 +197,4 @@ def main(cfg: DictConfig):
 
 if __name__ == "__main__":
     main()
+    #source regression_env/bin/activate

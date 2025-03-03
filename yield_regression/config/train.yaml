@@ -8,17 +8,17 @@ trainer:
   max_epochs: 100
   accelerator: gpu
   devices: 4
-  strategy: ddp_find_unused_parameters_true
+  strategy: ddp
   logger: true
-  enable_checkpointing: true
+  # enable_checkpointing: true
   callbacks:
     - monitor: val_pearson_spearman
       patience: 10
       mode: max
-      # _target_: pytorch_lightning.callbacks.EarlyStopping
-    - monitor: val_pearson_spearman
-      mode: max
-      # _target_: pytorch_lightning.callbacks.ModelCheckpoint
+      _target_: pytorch_lightning.callbacks.EarlyStopping
+    # - monitor: val_pearson_spearman
+    #   mode: max
+    #   _target_: pytorch_lightning.callbacks.ModelCheckpoint
 
 hydra:
   run:
