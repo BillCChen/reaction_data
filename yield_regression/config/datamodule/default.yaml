@@ -1,4 +1,4 @@
 _target_: regression.DataModule
-batch_size: 4096
-num_workers: 4
+batch_size: 2048
+num_workers: 8
 val_split: 0.2

@@ -5,15 +5,15 @@ defaults:
 
 seed: 42
 trainer:
-  max_epochs: 100
+  max_epochs: 1000
   accelerator: gpu
-  devices: 4
+  devices: 2
   strategy: ddp
   logger: true
   # enable_checkpointing: true
   callbacks:
-    - monitor: val_pearson_spearman
-      patience: 10
+    - monitor: val_p_s
+      patience: 50
       mode: max
       _target_: pytorch_lightning.callbacks.EarlyStopping
     # - monitor: val_pearson_spearman
