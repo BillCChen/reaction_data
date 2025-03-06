@@ -5,12 +5,15 @@ defaults:
 
 seed: 42
 trainer:
-  max_epochs: 1000
+  max_epochs: 10000
+  min_epochs: 1000
   accelerator: gpu
   devices: 2
   strategy: ddp
   logger: true
   # enable_checkpointing: true
+  progress_bar_refresh_rate : 10
+  val_check_interval: 10
   callbacks:
     - monitor: val_p_s
       patience: 50

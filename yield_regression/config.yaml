@@ -1,7 +1,7 @@
 datamodule:
   _target_: regression.DataModule
-  batch_size: 1024
-  num_workers: 4
+  batch_size: 2048
+  num_workers: 8
   val_split: 0.2
 model:
   _target_: regression.LitModel
@@ -9,18 +9,21 @@ model:
   hidden_dim: 1024
   num_layers: 8
   output_dim: 1
-  lr: 0.001
+  lr: 0.005
   use_bn: true
   dropout: 0.5
 seed: 42
 trainer:
   max_epochs: 10000
+  min_epochs: 1000
   accelerator: gpu
   devices: 2
   strategy: ddp
   logger: true
+  progress_bar_refresh_rate: 10
+  val_check_interval: 10
   callbacks:
   - monitor: val_p_s
-    patience: 100
+    patience: 50
     mode: max
     _target_: pytorch_lightning.callbacks.EarlyStopping

@@ -94,11 +94,24 @@ class LitModel(pl.LightningModule):
         self.valid_container_targets = []
     def forward(self, x):
         return self.model(x)
-
+    def poisson_loss(self,pred, target):
+        """
+        计算泊松损失函数
+        :param pred: 模型的预测值，形状为 (batch_size,)
+        :param target: 真实值，形状为 (batch_size,)
+        :return: 泊松损失值
+        """
+        # 避免对数运算中的数值不稳定问题
+        eps = 1e-10
+        pred = torch.clamp(pred, min=eps)
+        # 计算泊松损失
+        loss = torch.mean(pred - target * torch.log(pred))
+        return loss
     def training_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self(x)
-        loss = F.mse_loss(y_hat, y)
+        # loss = F.mse_loss(y_hat, y)
+        loss = self.poisson_loss(y_hat, y)
         self.log("train_loss", loss, prog_bar=True)
         return loss
 
@@ -117,6 +130,7 @@ class LitModel(pl.LightningModule):
         targets = torch.cat([x.cpu() for x in self.valid_container_targets])
         pearson = PearsonCorrCoef()(preds.squeeze(), targets.squeeze())
         spearman = SpearmanCorrCoef()(preds.squeeze(), targets.squeeze())
+        r_2  = 1 - F.mse_loss(preds, targets) / torch.var(targets)
         combined = (pearson + spearman) / 2
         # 清空 self.valid_container_preds 和 self.valid_container_targets
         self.valid_container_preds = []
@@ -124,6 +138,7 @@ class LitModel(pl.LightningModule):
         self.log("val_p", pearson)
         self.log("val_s", spearman)
         self.log("val_p_s", combined, prog_bar=True)
+        self.log("val_r2", r_2, prog_bar=True)
         return combined
 
     def test_step(self, batch, batch_idx):
@@ -139,16 +154,16 @@ class LitModel(pl.LightningModule):
         targets = torch.cat([x.cpu() for x in self.test_targets])
         pearson = PearsonCorrCoef()(preds.squeeze(), targets.squeeze())
         spearman = SpearmanCorrCoef()(preds.squeeze(), targets.squeeze())
-        
+        r2 = 1 - F.mse_loss(preds, targets) / torch.var(targets)
         self.log("test_pearson", pearson)
         self.log("test_spearman", spearman)
-        
+        self.log("test_r2", r2)
         # Plot and save
         plt.figure(figsize=(10, 6))
         plt.scatter(targets.cpu().numpy(), preds.detach().cpu().numpy(), alpha=0.5)
         plt.xlabel("True Values")
         plt.ylabel("Predictions")
-        plt.title(f"Test Set Predictions\nPearson: {pearson:.4f}, Spearman: {spearman:.4f}")
+        plt.title(f"Test Set Predictions\nPearson: {pearson:.4f}, Spearman: {spearman:.4f} R2: {r2:.4f}")
         plt.savefig(Path(os.getcwd()) / "test_scatter.png")
         plt.close()
 
@@ -157,7 +172,8 @@ class LitModel(pl.LightningModule):
 @hydra.main(config_path="config", config_name="train", version_base="1.3")
 def main(cfg: DictConfig):
     pl.seed_everything(cfg.seed)
-    torch.set_float32_matmul_precision('medium') 
+    # torch.set_float32_matmul_precision('medium')
+    torch.set_float32_matmul_precision('high') 
     # Load your data_dict here
     # data_dict = {
     #     "train_fps": [torch.randn(2048, dtype=torch.float32) for _ in range(1000)],
@@ -200,9 +216,13 @@ def main(cfg: DictConfig):
     # epoch_progress_bar = EpochProgressBar()
     trainer = Trainer(
     max_epochs=cfg.trainer.max_epochs,
+    min_epochs=cfg.trainer.min_epochs,
     devices=cfg.trainer.devices,
     accelerator=cfg.trainer.accelerator,
     logger=cfg.trainer.logger,
+    check_val_every_n_epoch=cfg.trainer.val_check_interval,
+    num_sanity_val_steps=10,
+    # progress_bar_refresh_rate=cfg.trainer.progress_bar_refresh_rate,
     callbacks=[instantiate(x) for x in cfg.trainer.callbacks]
     # +[epoch_progress_bar],
     )
