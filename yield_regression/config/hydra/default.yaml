@@ -1,0 +1,5 @@
+# enable color logging
+defaults:
+  - override hydra_logging: colorlog
+run:
+  dir: logs/${now:%Y-%m-%d}/${now:%H-%M-%S}  # 统一输出目录

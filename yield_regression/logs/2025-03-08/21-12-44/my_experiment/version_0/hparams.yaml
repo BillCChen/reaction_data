@@ -1,0 +1,17 @@
+model_args:
+  _target_: regression.LitModel
+  input_dim: 2048
+  hidden_dim: 96
+  num_layers: 3
+  output_dim: 1
+  use_bn: true
+  dropout_ratio: 0.05
+optimizer_args:
+  type: adam
+  lr: 0.001
+  weight_decay: 0.0001
+  clip_grad_norm: 1.0
+scheduler_args:
+  type: step_lr
+  step_size: 10000
+  gamma: 0.5

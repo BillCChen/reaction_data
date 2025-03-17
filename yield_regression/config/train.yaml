@@ -1,28 +1,34 @@
 defaults:
+  - _self_
   - datamodule: default
-  - model: default
-  - hydra/logging: null
+  - model: VAE
+  - optimizer: adam
+  - scheduler: step_lr
+  - logging: default
+  - hydra: default
 
 seed: 42
 trainer:
+  _target_: pytorch_lightning.Trainer
   max_epochs: 10000
   min_epochs: 1000
   accelerator: gpu
   devices: 2
   strategy: ddp
-  logger: true
-  # enable_checkpointing: true
-  progress_bar_refresh_rate : 10
-  val_check_interval: 10
+  logger:
+    _target_: pytorch_lightning.loggers.TensorBoardLogger
+    save_dir: ${hydra:run.dir}  # 使用 Hydra 的输出目录作为日志目录
+    name: my_experiment
+  enable_progress_bar: true
+  check_val_every_n_epoch: 10
   callbacks:
-    - monitor: val_p_s
+    - monitor: val_r2
       patience: 50
       mode: max
       _target_: pytorch_lightning.callbacks.EarlyStopping
-    # - monitor: val_pearson_spearman
-    #   mode: max
-    #   _target_: pytorch_lightning.callbacks.ModelCheckpoint
+    - monitor: val_r2
+      mode: max
+      dirpath: ${hydra:run.dir}/checkpoints  # 使用 Hydra 的输出目录作为检查点目录
+      _target_: pytorch_lightning.callbacks.ModelCheckpoint
 
-hydra:
-  run:
-    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+

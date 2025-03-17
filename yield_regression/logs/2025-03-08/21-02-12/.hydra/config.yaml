@@ -1,0 +1,51 @@
+seed: 42
+trainer:
+  _target_: pytorch_lightning.Trainer
+  max_epochs: 10000
+  min_epochs: 1000
+  accelerator: gpu
+  devices: 2
+  strategy: ddp
+  logger:
+    _target_: pytorch_lightning.loggers.TensorBoardLogger
+    save_dir: ${hydra:run.dir}
+    name: my_experiment
+  enable_progress_bar: true
+  check_val_every_n_epoch: 10
+  callbacks:
+  - monitor: val_r2
+    patience: 50
+    mode: max
+    _target_: pytorch_lightning.callbacks.EarlyStopping
+  - monitor: val_r2
+    mode: max
+    dirpath: ${hydra:run.dir}/checkpoints
+    _target_: pytorch_lightning.callbacks.ModelCheckpoint
+datamodule:
+  _target_: regression.DataModule
+  batch_size: 2048
+  num_workers: 8
+  val_split: 0.2
+model:
+  _target_: regression.LitModel
+  input_dim: 2048
+  hidden_dim: 96
+  num_layers: 3
+  output_dim: 1
+  use_bn: true
+  dropout_ratio: 0.05
+optimizer:
+  type: adam
+  lr: 0.001
+  weight_decay: 0.0001
+  clip_grad_norm: 1.0
+scheduler:
+  type: step_lr
+  step_size: 10000
+  gamma: 0.1
+logging:
+  csv:
+    _target_: lightning.pytorch.loggers.CSVLogger
+    save_dir: ${hydra:run.dir}
+    name: log
+    version: csv
