@@ -1,0 +1,3 @@
+[submodule "yield_regression/model/rxnfp"]
+	path = yield_regression/model/rxnfp
+	url = git@github.com:BillCChen/rxnfp.git
