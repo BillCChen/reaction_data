@@ -1,3 +1,9 @@
 [submodule "yield_regression/model/rxnfp"]
 	path = yield_regression/model/rxnfp
 	url = git@github.com:BillCChen/rxnfp.git
+[submodule "yield_regression/model/yield_bert"]
+	path = yield_regression/model/yield_bert
+	url = git@github.com:BillCChen/rxn_yields.git
+[submodule "yield_regression/model/ReaMVP"]
+	path = yield_regression/model/ReaMVP
+	url = git@github.com:BillCChen/ReaMVP.git
