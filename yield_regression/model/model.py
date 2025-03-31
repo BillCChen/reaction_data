@@ -8,7 +8,7 @@ from torch.optim.lr_scheduler import StepLR
 import torch.nn.functional as F
 import numpy as np
 from torch.distributions import Normal
-
+import random
 
 import matplotlib.pyplot as plt
 import os
@@ -27,11 +27,11 @@ class ModelRegression(pl.LightningModule):
         # self.args.setdefault('hidden_dim', 64)
         # self.args.setdefault('num_layers', 3)
         # self.args.setdefault('activation', 'relu')
-        # self.args.setdefault('dropout', 0.3)
-        # self.args.setdefault('lr', 0.001)
-        # self.args.setdefault('batch_size', 32)
+        # self.args.setdefault('dropout', 0.5)
+        # self.args.setdefault('lr', 0.0001)
+        # self.args.setdefault('batch_size', 128)
         # self.args.setdefault('early_stopping', None)
-        # self.args.setdefault('use_normalization', False)
+        # self.args.setdefault('use_normalization', True)
 
         # 模型组件
         self.model = self.create_model()
@@ -113,9 +113,9 @@ class ModelRegression(pl.LightningModule):
         :param batch_idx: 当前 batch 的索引
         :return: 训练损失
         """
-        x, y = batch['fingerprint'], batch['labels']    
+        x, y = batch   
         y_hat = self(x)
-        loss = F.mse_loss(y_hat.squeeze(), y)
+        loss = F.mse_loss(y_hat, y)
         
         # 更新训练损失
         self.eval_metrics['train_loss'] = loss.item()
@@ -129,14 +129,15 @@ class ModelRegression(pl.LightningModule):
         :param batch_idx: 当前 batch 的索引
         :return: 验证损失和预测值
         """
-        x, y = batch['fingerprint'], batch['labels']  
+        x, y = batch  
         y_hat = self(x)
-        loss = F.mse_loss(y_hat.squeeze(), y)
+        loss = F.mse_loss(y_hat, y)
         
         # 更新评估指标
         self.eval_metrics['valid_loss'] = loss.item()
-        self.eval_metrics['r2'] = R2Score()(y_hat.squeeze(), y).item()
-        self.eval_metrics['pearson_r'] = PearsonCorrCoef()(y_hat.squeeze(), y).item()
+        self.eval_metrics['val_r2'] = R2Score()(y_hat.detach().cpu(), y.cpu()
+                                          ).item()
+        self.eval_metrics['pearson_r'] = PearsonCorrCoef()(y_hat.detach().cpu(), y.cpu()).item()
         
         return loss
 
@@ -188,8 +189,8 @@ class ModelRegression(pl.LightningModule):
 # # 创建模型实例
 # model = ModelRegression(args)
 class LitModel(pl.LightningModule):
-    def __init__(self, input_dim=2048, hidden_dim=1024, num_layers=8, output_dim=1, 
-                 lr=1e-3, use_bn=True,dropout_ratio=0.5):
+    def __init__(self, input_dim=2048, hidden_dim=2048, num_layers=4, output_dim=1, 
+                 lr=1e-5, use_bn=True,dropout_ratio=0.5):
         super().__init__()
         self.save_hyperparameters()
         
@@ -211,8 +212,7 @@ class LitModel(pl.LightningModule):
             
         # Output layer
         layers.append(nn.Linear(hidden_dim, output_dim))
-        layers.append(nn.Sigmoid())
-        
+        # layers.append(nn.Tanh())
         self.model = nn.Sequential(*layers)
         self.lr = lr
         self.test_preds = []
@@ -220,7 +220,8 @@ class LitModel(pl.LightningModule):
         self.valid_container_preds = []
         self.valid_container_targets = []
     def forward(self, x):
-        return self.model(x)
+        tensor = self.model(x)
+        return tensor
     def poisson_loss(self,pred, target):
         """
         计算泊松损失函数
@@ -266,12 +267,27 @@ class LitModel(pl.LightningModule):
 
         return loss
     def training_step(self, batch, batch_idx):
+
         x, y = batch
+        device = x.device
         y_hat = self(x)
-        # loss = F.mse_loss(y_hat, y)
-        loss = self.poisson_loss(y_hat, y)
+        loss = F.mse_loss(y_hat, y)
+        r2 = 1 - F.mse_loss(y_hat, y) / torch.var(y)
+        self.log("train_r2", r2, prog_bar=True)
+        peason_r = PearsonCorrCoef().to(device)(y_hat, y)
+        self.log("train_peason_r", peason_r, prog_bar=True)
+        # loss = self.poisson_loss(y_hat, y)
         # loss = self.list_wise_loss(y_hat, y)
         self.log("train_loss", loss, prog_bar=True)
+        num = random.randint(0, 100)
+        if num == 1:
+            plt.figure(figsize=(10, 6))
+            plt.scatter(y.cpu().numpy(), y_hat.detach().cpu().numpy(), alpha=0.5)
+            plt.xlabel("True Values")
+            plt.ylabel("Predictions")
+            plt.title(f"Training Set Predictions\nR2: {r2:.4f} Pearson: {peason_r:.4f}")
+            plt.savefig(Path(os.getcwd()) / "train_scatter.png")
+            plt.close()
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -282,22 +298,29 @@ class LitModel(pl.LightningModule):
         self.valid_container_preds.append(y_hat)
         self.valid_container_targets.append(y)
         return {"preds": y_hat, "targets": y}
-
     def on_validation_epoch_end(self):
         # 获取在 validation_step 中记录的所有预测值和目标值
+        print(f"Begin on_validation_epoch_end")
         preds = torch.cat([x.cpu() for x in self.valid_container_preds])
         targets = torch.cat([x.cpu() for x in self.valid_container_targets])
-        pearson = PearsonCorrCoef()(preds.squeeze(), targets.squeeze())
-        spearman = SpearmanCorrCoef()(preds.squeeze(), targets.squeeze())
-        r_2  = 1 - F.mse_loss(preds, targets) / torch.var(targets)
-        combined = (pearson + spearman) / 2
-        # 清空 self.valid_container_preds 和 self.valid_container_targets
         self.valid_container_preds = []
         self.valid_container_targets = []
-        self.log("val_p", pearson)
-        self.log("val_s", spearman)
+        pearson = PearsonCorrCoef()(preds, targets)
+        r_2  = 1 - F.mse_loss(preds, targets) / torch.var(targets)
+        combined = (pearson + pearson) / 2
+        # 清空 self.valid_container_preds 和 self.valid_container_targets
+        # self.log("val_p", pearson)
+        # self.log("val_s", spearman)
         self.log("val_p_s", combined, prog_bar=True)
         self.log("val_r2", r_2, prog_bar=True)
+        print(f"End on_validation_epoch_end")
+        plt.figure(figsize=(10, 6))
+        plt.scatter(targets.cpu().numpy(), preds.detach().cpu().numpy(), alpha=0.1)
+        plt.xlabel("True Values")
+        plt.ylabel("Predictions")
+        plt.title(f"Validation Set Predictions\nPearson: {pearson:.4f}, R2: {r_2:.4f}")
+        plt.savefig(Path(os.getcwd()) / "val_scatter.png")
+        plt.close()
         return combined
 
     def test_step(self, batch, batch_idx):
@@ -321,7 +344,7 @@ class LitModel(pl.LightningModule):
         self.log("test_r2", r2)
         # Plot and save
         plt.figure(figsize=(10, 6))
-        plt.scatter(targets.cpu().numpy(), preds.detach().cpu().numpy(), alpha=0.5)
+        plt.scatter(targets.cpu().numpy(), preds.detach().cpu().numpy(), alpha=0.1)
         plt.xlabel("True Values")
         plt.ylabel("Predictions")
         plt.title(f"Test Set Predictions\nPearson: {pearson:.4f}, Spearman: {spearman:.4f} R2: {r2:.4f}")

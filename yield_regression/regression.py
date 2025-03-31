@@ -1,4 +1,5 @@
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 from datetime import datetime
 import hydra
 from omegaconf import DictConfig, OmegaConf
@@ -8,7 +9,7 @@ from torch.utils.data import DataLoader, TensorDataset, random_split
 import pytorch_lightning as pl
 from pytorch_lightning import LightningModule, Trainer
 
-from model.model import VaeModel as regression_model
+from model.model import LitModel as regression_model
 class DataModule(pl.LightningDataModule):
     def __init__(self, train_fps, test_fps, train_labels, test_labels, batch_size=4096, num_workers=8, val_split=0.2):
         super().__init__()
@@ -41,25 +42,35 @@ class DataModule(pl.LightningDataModule):
 
 @hydra.main(config_path="config", config_name="train", version_base="1.3")
 def main(cfg: DictConfig):
+    
+    version = "FULL"
+    print(f"Data Version: {version}")
     pl.seed_everything(cfg.seed)
     # torch.set_float32_matmul_precision('medium')
     torch.set_float32_matmul_precision('high') 
     # Load your data_dict here
+    if version == "MINI":
+        # data_dict = pickle.load(open("/root/public_data/20250303_ChORISO_train_test_reactions_fps_labels.pkl", "rb"))
+        data_dict = pickle.load(open("/root/public_data/20250303_ChORISO_train_test_reactions_fps_labels_mini.pkl", "rb"))
+        # Convert to tensors
+        train_fps = torch.stack(data_dict["train_fps"], dim=0)
+        test_fps = torch.stack(data_dict["test_fps"], dim=0) 
+        train_labels = torch.tensor(data_dict["train_labels"], dtype=torch.float32).view(-1, 1) - torch.tensor([0.7])
+        test_labels = torch.tensor(data_dict["test_labels"], dtype=torch.float32).view(-1, 1) - torch.tensor([0.7])
+    elif version == "FULL":
+        import h5py
 
-    # data_dict = pickle.load(open("/root/public_data/20250303_ChORISO_train_test_reactions_fps_labels.pkl", "rb"))
-    # data_dict = pickle.load(open("/root/public_data/20250303_ChORISO_train_test_reactions_fps_labels_mini.pkl", "rb"))
-    # Convert to tensors
-    # train_fps = torch.stack(data_dict["train_fps"], dim=0)
-    # test_fps = torch.stack(data_dict["test_fps"], dim=0)
-    # train_labels = torch.tensor(data_dict["train_labels"], dtype=torch.float32).view(-1, 1)
-    # test_labels = torch.tensor(data_dict["test_labels"], dtype=torch.float32).view(-1, 1)
-    import h5py
-
-    with h5py.File("/root/public_data/ChORISO/data.h5", "r") as f:
-        train_fps = torch.tensor(f["train_fps"][:], dtype=torch.float32)
-        test_fps = torch.tensor(f["test_fps"][:], dtype=torch.float32)
-        train_labels = torch.tensor(f["train_labels"][:], dtype=torch.float32).view(-1, 1)
-        test_labels = torch.tensor(f["test_labels"][:], dtype=torch.float32).view(-1, 1)
+        with h5py.File("/root/public_data/ChORISO/data.h5", "r") as f:
+            train_fps = torch.tensor(f["train_fps"][:], dtype=torch.float32)
+            test_fps = torch.tensor(f["test_fps"][:], dtype=torch.float32)
+            train_labels = torch.tensor(f["train_labels"][:], dtype=torch.float32).view(-1, 1)
+            # 正态化
+            train_labels = (train_labels - train_labels.mean()) / train_labels.std()
+            test_labels = torch.tensor(f["test_labels"][:], dtype=torch.float32).view(-1, 1)
+            # 正态化
+            test_labels = (test_labels - test_labels.mean()) / test_labels.std()
+    else:
+        raise ValueError(f"Invalid version of data: {version}")
     print(f"Train FPS: {train_fps.shape}, Train Labels: {train_labels.shape}")
     print(f"Test_FPS:{test_labels.shape}, Test_labels:{test_labels.shape}")
     # print(C)
@@ -71,7 +82,8 @@ def main(cfg: DictConfig):
     )
     print(f"Batch Size: {cfg.datamodule.batch_size}, Num Workers: {cfg.datamodule.num_workers}, Val Split: {cfg.datamodule.val_split}")
     print(f"Model: {cfg.model}")
-    model = regression_model(cfg.model,cfg.optimizer,cfg.scheduler)
+    # model = regression_model(cfg.model,cfg.optimizer,cfg.scheduler)
+    model = regression_model()
     print(f"Input Dim: {cfg.model.input_dim}, Hidden Dim: {cfg.model.hidden_dim}, Num Layers: {cfg.model.num_layers}, Output Dim: {cfg.model.output_dim}, LR: {cfg.optimizer.lr}, Use BN: {cfg.model.use_bn}")
     from hydra.utils import instantiate
 

@@ -1,7 +1,7 @@
 defaults:
   - _self_
   - datamodule: default
-  - model: VAE
+  - model: MLP
   - optimizer: adam
   - scheduler: step_lr
   - logging: default
@@ -10,17 +10,18 @@ defaults:
 seed: 42
 trainer:
   _target_: pytorch_lightning.Trainer
-  max_epochs: 10000
-  min_epochs: 1000
+  max_epochs: 1000
+  min_epochs: 100
   accelerator: gpu
-  devices: 2
+  devices: 1
   strategy: ddp
   logger:
     _target_: pytorch_lightning.loggers.TensorBoardLogger
     save_dir: ${hydra:run.dir}  # 使用 Hydra 的输出目录作为日志目录
     name: my_experiment
   enable_progress_bar: true
-  check_val_every_n_epoch: 10
+  check_val_every_n_epoch: 5
+  # check_val_every_n_steps: 1000
   callbacks:
     - monitor: val_r2
       patience: 50

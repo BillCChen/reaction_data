@@ -1,3 +1,7 @@
 yield_regression/ouput_tmp/*
 yield_regression/outputs/*
+yield_regression/logs/*
+yield_regression/*.png
+yield_regression/*.pth
 yield_regression/lightning_logs/*
+*.ipynb
