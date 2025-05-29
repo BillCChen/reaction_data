@@ -5,3 +5,7 @@ yield_regression/*.png
 yield_regression/*.pth
 yield_regression/lightning_logs/*
 *.ipynb
+
+# 忽略所有的.smi文件
+*.smi
+*.pkl
